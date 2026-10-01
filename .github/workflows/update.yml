@@ -1,0 +1,45 @@
+name: Обновить расписание
+
+on:
+  schedule:
+    - cron: "23 */4 * * *"   # каждые 4 часа
+  workflow_dispatch:          # кнопка «Run workflow» для ручного запуска
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Собрать календарь
+        run: |
+          pip install beautifulsoup4
+          python make_ics.py
+
+      - name: Сохранить, если что-то изменилось
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          touch .nojekyll
+          git add timacad.ics .nojekyll
+          if git diff --cached --quiet; then
+            # GitHub отключает расписание, если в репозитории 60 дней нет активности.
+            # Раз в ~30 дней делаем пустой коммит, чтобы этого не случилось.
+            last=$(git log -1 --format=%ct)
+            if [ $(( $(date +%s) - last )) -gt 2592000 ]; then
+              git commit --allow-empty -m "keepalive"
+              git push
+            else
+              echo "Расписание не изменилось"
+            fi
+          else
+            git commit -m "Обновление расписания"
+            git push
+          fi
